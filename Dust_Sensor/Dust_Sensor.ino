@@ -6,6 +6,7 @@
 // Load Wi-Fi library
 #include <WiFi.h>
 #include "SDS011.h"
+#include "movingAvgFloat.h" //https://github.com/ThingEngineer/movingAvgFloat
 
 // Replace with your network credentials
 const char* ssid = "CircuitLaunch";//"ATT880";
@@ -15,12 +16,15 @@ float p10i, p25i, p10o, p25o;
 int err;
 int airPin = 23;
 unsigned long airLastChangeTime = millis();
-int airOffDuration = 20000;
-int airOnDuration = 200;
+int airOffDuration = 30000;
+int airOnDuration = 100;
 int airStatus = 0;
 
 SDS011 my_sds_input;
 SDS011 my_sds_output;
+
+movingAvgFloat p10Avg(200);
+movingAvgFloat p25Avg(200);
 
 HardwareSerial port0(0);
 HardwareSerial port2(2);
@@ -39,35 +43,38 @@ unsigned long previousTime = 0;
 const long timeoutTime = 2000;
 
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
 
   // Connect to Wi-Fi network with SSID and password
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+  //Serial.print("Connecting to ");
+  //Serial.println(ssid);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   // Print local IP address and start web server
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+  //Serial.println("");
+  //Serial.println("WiFi connected.");
+  //Serial.println("IP address: ");
+  //Serial.println(WiFi.localIP());
   server.begin();
 
   my_sds_input.begin(&port2, 17, 16);
-  //my_sds_output.begin(&port0, 2, 20);
+  my_sds_output.begin(&port0, 2, 20);
+
+  p10Avg.begin();
+  p25Avg.begin();
 
   pinMode(airPin, OUTPUT);
 }
 
 void loop(){
   err = my_sds_input.read(&p25i, &p10i);
-  //err = my_sds_output.read(&p25o, &p10o);
+  err = my_sds_output.read(&p25o, &p10o);
   //If the air is on check to see if it should be turned off
   int timeSinceLastChange = millis() - airLastChangeTime;
-  if(airStatus == 0 && timeSinceLastChange > airOffDuration){
+  if(airStatus == 0 && timeSinceLastChange > airOffDuration && p10i < 1200){
     airLastChangeTime = millis();
     digitalWrite(airPin, HIGH);
     airStatus = 1;
@@ -107,7 +114,7 @@ void loop(){
 
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta http-equiv=\"refresh\" content=\"2\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<head><meta http-equiv=\"refresh\" content=\".5\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
             // CSS to style the on/off buttons 
             // Feel free to change the background-color and font-size attributes to fit your preferences
@@ -124,6 +131,13 @@ void loop(){
             client.println("<p>Input P10: " + String(p10i) + "</p>");
             client.println("<p>Output P25: " + String(p25o) + "</p>");
             client.println("<p>Output P10: " + String(p10o) + "</p>");
+
+            const float p10efficiency = p10Avg.reading((p10i - p10o)/p10i);
+            const float p25efficiency = p25Avg.reading((p25i - p25o)/p25i);
+
+
+            client.println("<p>Cyclone P10 efficiency: " + String(p10efficiency) + "</p>");
+            client.println("<p>Cyclone P25 efficiency: " + String(p25efficiency) + "</p>");
             
             client.println("<p>Air Status: " + String(airStatus) + "</p>");
             client.println("<p>Time Since Last Change: " + String(timeSinceLastChange) + "</p>");
@@ -141,7 +155,7 @@ void loop(){
         }
       }
     }
-    Serial.println("After client");
+    //Serial.println("After client");
     // Clear the header variable
     header = "";
     // Close the connection
