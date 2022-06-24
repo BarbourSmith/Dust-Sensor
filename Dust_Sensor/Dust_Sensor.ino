@@ -8,14 +8,16 @@
 #include "SDS011.h"
 
 // Replace with your network credentials
-const char* ssid = "CircuitLaunch";
-const char* password = "makinghardwarelesshard";
+const char* ssid = "CircuitLaunch";//"ATT880";
+const char* password = "makinghardwarelesshard";//"0637746481";
 
 float p10i, p25i, p10o, p25o;
 int err;
 int airPin = 23;
-int airDutyCycle = 2000;
-int airCount = 0;
+unsigned long airLastChangeTime = millis();
+int airOffDuration = 20000;
+int airOnDuration = 200;
+int airStatus = 0;
 
 SDS011 my_sds_input;
 SDS011 my_sds_output;
@@ -29,10 +31,6 @@ WiFiServer server(80);
 // Variable to store the HTTP request
 String header;
 
-// Auxiliar variables to store the current output state
-String output26State = "off";
-String output27State = "off";
-
 // Current time
 unsigned long currentTime = millis();
 // Previous time
@@ -41,30 +39,47 @@ unsigned long previousTime = 0;
 const long timeoutTime = 2000;
 
 void setup() {
-  //Serial.begin(115200);
+  Serial.begin(115200);
 
   // Connect to Wi-Fi network with SSID and password
-  //Serial.print("Connecting to ");
-  //Serial.println(ssid);
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    //Serial.print(".");
+    Serial.print(".");
   }
   // Print local IP address and start web server
-  //Serial.println("");
-  //Serial.println("WiFi connected.");
-  //Serial.println("IP address: ");
-  //Serial.println(WiFi.localIP());
+  Serial.println("");
+  Serial.println("WiFi connected.");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
   server.begin();
 
   my_sds_input.begin(&port2, 17, 16);
-  my_sds_output.begin(&port0, 2, 20);
+  //my_sds_output.begin(&port0, 2, 20);
 
   pinMode(airPin, OUTPUT);
 }
 
 void loop(){
+  err = my_sds_input.read(&p25i, &p10i);
+  //err = my_sds_output.read(&p25o, &p10o);
+  //If the air is on check to see if it should be turned off
+  int timeSinceLastChange = millis() - airLastChangeTime;
+  if(airStatus == 0 && timeSinceLastChange > airOffDuration){
+    airLastChangeTime = millis();
+    digitalWrite(airPin, HIGH);
+    airStatus = 1;
+    timeSinceLastChange = 0;
+  }
+  //Turn the air off if it's been on for too long
+  if(airStatus == 1 && timeSinceLastChange > airOnDuration){
+    airLastChangeTime = millis();
+    digitalWrite(airPin, LOW);
+    airStatus = 0;
+  }
+
   WiFiClient client = server.available();   // Listen for incoming clients
 
   if (client) {                             // If a new client connects,
@@ -74,6 +89,7 @@ void loop(){
     String currentLine = "";                // make a String to hold incoming data from the client
     while (client.connected() && currentTime - previousTime <= timeoutTime) {  // loop while the client's connected
       currentTime = millis();
+
       if (client.available()) {             // if there's bytes to read from the client,
         char c = client.read();             // read a byte, then
         Serial.write(c);                    // print it out the serial monitor
@@ -88,25 +104,10 @@ void loop(){
             client.println("Content-type:text/html");
             client.println("Connection: close");
             client.println();
-            
-            // turns the GPIOs on and off
-            if (header.indexOf("GET /26/on") >= 0) {
-              //Serial.println("GPIO 26 on");
-              output26State = "on";
-            } else if (header.indexOf("GET /26/off") >= 0) {
-              //Serial.println("GPIO 26 off");
-              output26State = "off";
-            } else if (header.indexOf("GET /27/on") >= 0) {
-              //Serial.println("GPIO 27 on");
-              output27State = "on";
-            } else if (header.indexOf("GET /27/off") >= 0) {
-              //Serial.println("GPIO 27 off");
-              output27State = "off";
-            }
-            
+
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<head><meta http-equiv=\"refresh\" content=\"2\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
             // CSS to style the on/off buttons 
             // Feel free to change the background-color and font-size attributes to fit your preferences
@@ -123,7 +124,9 @@ void loop(){
             client.println("<p>Input P10: " + String(p10i) + "</p>");
             client.println("<p>Output P25: " + String(p25o) + "</p>");
             client.println("<p>Output P10: " + String(p10o) + "</p>");
-            // If the output27State is off, it displays the ON button       
+            
+            client.println("<p>Air Status: " + String(airStatus) + "</p>");
+            client.println("<p>Time Since Last Change: " + String(timeSinceLastChange) + "</p>");
             client.println("</body></html>");
             
             // The HTTP response ends with another blank line
@@ -137,17 +140,8 @@ void loop(){
           currentLine += c;      // add it to the end of the currentLine
         }
       }
-      err = my_sds_input.read(&p25i, &p10i);
-      err = my_sds_output.read(&p25o, &p10o);
-      if(airCount > airDutyCycle){
-        airCount = 0;
-        digitalWrite(airPin, HIGH);
-      }
-      else{
-        airCount++;
-        digitalWrite(airPin, LOW);
-      }
     }
+    Serial.println("After client");
     // Clear the header variable
     header = "";
     // Close the connection
