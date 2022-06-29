@@ -5,6 +5,7 @@
 
 // Load Wi-Fi library
 #include <WiFi.h>
+#include <ArduPID.h>
 #include "SDS011.h"
 #include "movingAvgFloat.h" //https://github.com/ThingEngineer/movingAvgFloat
 
@@ -19,6 +20,15 @@ unsigned long airLastChangeTime = millis();
 int airOffDuration = 30000;
 int airOnDuration = 100;
 int airStatus = 0;
+
+ArduPID myController;
+
+double setpoint = 1400;
+double input;
+double output;
+double p = 100;
+double i = 30;
+double d = 0;
 
 SDS011 my_sds_input;
 SDS011 my_sds_output;
@@ -67,26 +77,26 @@ void setup() {
   p25Avg.begin();
 
   pinMode(airPin, OUTPUT);
+
+  myController.begin(&input, &output, &setpoint, p, i, d);
+  myController.setOutputLimits(0, 45000);
 }
 
 void loop(){
   err = my_sds_input.read(&p25i, &p10i);
   err = my_sds_output.read(&p25o, &p10o);
 
-  //Adjust the time off air based on the dust level
-  int scaledOffTime = airOffDuration;
-  if(p10i < 500){
-    scaledOffTime = airOffDuration / 4;
-  }
-  else if(p10i < 1000){
-    scaledOffTime = airOffDuration / 2;
-  }
+  //PID controller to stabilize dust levels
+  input = p10i; // Replace with sensor feedback
+  myController.compute();
 
+  //Adjust the time off air based on the dust level
+  int scaledOffTime = 50000 - output;
 
 
   //If the air is on check to see if it should be turned off
   int timeSinceLastChange = millis() - airLastChangeTime;
-  if(airStatus == 0 && timeSinceLastChange > scaledOffTime && p10i < 1400){
+  if(airStatus == 0 && timeSinceLastChange > scaledOffTime){
     airLastChangeTime = millis();
     digitalWrite(airPin, HIGH);
     airStatus = 1;
@@ -152,7 +162,7 @@ void loop(){
             client.println("<p>Cyclone P25 efficiency: " + String(p25efficiency) + "</p>");
             
             client.println("<p>Air Status: " + String(airStatus) + "</p>");
-            client.println("<p>Time Since Last Change: " + String(timeSinceLastChange) + "</p>");
+            client.println("<p>Pulse spacing: " + String(output) + "</p>");
             client.println("</body></html>");
             
             // The HTTP response ends with another blank line
