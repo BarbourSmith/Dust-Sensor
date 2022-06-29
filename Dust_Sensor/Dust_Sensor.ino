@@ -1,6 +1,6 @@
 /*********
   Rui Santos
-  Complete project details at http://randomnerdtutorials.com  
+  Complete project details at http://randomnerdtutorials.com  https://randomnerdtutorials.com/esp32-web-server-arduino-ide/
 *********/
 
 // Load Wi-Fi library
@@ -72,9 +72,21 @@ void setup() {
 void loop(){
   err = my_sds_input.read(&p25i, &p10i);
   err = my_sds_output.read(&p25o, &p10o);
+
+  //Adjust the time off air based on the dust level
+  int scaledOffTime = airOffDuration;
+  if(p10i < 500){
+    scaledOffTime = airOffDuration / 4;
+  }
+  else if(p10i < 1000){
+    scaledOffTime = airOffDuration / 2;
+  }
+
+
+
   //If the air is on check to see if it should be turned off
   int timeSinceLastChange = millis() - airLastChangeTime;
-  if(airStatus == 0 && timeSinceLastChange > airOffDuration && p10i < 1200){
+  if(airStatus == 0 && timeSinceLastChange > scaledOffTime && p10i < 1400){
     airLastChangeTime = millis();
     digitalWrite(airPin, HIGH);
     airStatus = 1;
