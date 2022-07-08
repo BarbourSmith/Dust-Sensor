@@ -18,7 +18,7 @@ int err;
 int airPin = 23;
 unsigned long airLastChangeTime = millis();
 int airOffDuration = 30000;
-int airOnDuration = 100;
+int airOnDuration = 150;
 int airStatus = 0;
 
 ArduPID myController;
@@ -136,7 +136,7 @@ void loop(){
 
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta http-equiv=\"refresh\" content=\".5\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+            client.println("<head><meta http-equiv=\"refresh\" content=\"1\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
             // CSS to style the on/off buttons 
             // Feel free to change the background-color and font-size attributes to fit your preferences
